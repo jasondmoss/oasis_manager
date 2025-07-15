@@ -173,7 +173,7 @@ vendor/bin/phpunit web/modules/custom/oasis_manager
 
 ## Maintainers
 
-- Your Name <your.email@example.com>
+- Jason D. Moss <work@jdmlabs.com>
 
 ## License
 
