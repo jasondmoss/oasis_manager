@@ -1,0 +1,18 @@
+services:
+  oasis_manager.api_client:
+    class: Drupal\oasis_manager\Service\OasisApiClient
+    arguments: [ '@http_client', '@logger.factory', '@config.factory' ]
+
+  oasis_manager.user_manager:
+    class: Drupal\oasis_manager\Service\OasisUserManager
+    arguments: [ '@entity_type.manager', '@oasis_manager.api_client', '@logger.factory', '@current_user', '@request_stack' ]
+
+  oasis_manager.authentication:
+    class: Drupal\oasis_manager\Service\OasisAuthenticationService
+    arguments: [ '@oasis_manager.api_client', '@oasis_manager.user_manager', '@logger.factory', '@messenger', '@user.auth' ]
+
+  oasis_manager.event_subscriber:
+    class: Drupal\oasis_manager\EventSubscriber\OasisManagerEventSubscriber
+    arguments: [ '@oasis_manager.authentication', '@current_user', '@messenger', '@request_stack' ]
+    tags:
+      - { name: event_subscriber }

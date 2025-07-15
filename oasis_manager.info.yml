@@ -1,0 +1,10 @@
+name: 'Oasis Manager'
+type: module
+description: 'Integration between Drupal and the Association Server [https://www.associationserver.com/] OASIS/NAF system for user authentication and authorization.'
+core_version_requirement: ^11
+version: '1.4.0'
+package: Custom
+dependencies:
+  - drupal:user
+  - drupal:field
+  - drupal:system (>=11.0)

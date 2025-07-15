@@ -1,0 +1,31 @@
+oasis_manager.logout:
+  path: '/oasis-logout'
+  defaults:
+    _controller: '\Drupal\oasis_manager\Controller\OasisManagerController::logout'
+    _title: 'Logout'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+
+oasis_manager.manage_profile:
+  path: '/oasis-profile'
+  defaults:
+    _controller: '\Drupal\oasis_manager\Controller\OasisManagerController::redirectToProfile'
+    _title: 'Manage Profile'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+
+oasis_manager.regular_member:
+  path: '/regular-member-area'
+  defaults:
+    _controller: '\Drupal\oasis_manager\Controller\OasisManagerController::regularMemberArea'
+    _title: 'Regular Member Area'
+  requirements:
+    _custom_access: '\Drupal\oasis_manager\Controller\OasisManagerController::userIsRegularMember'
+
+oasis_manager.associate_member:
+  path: '/associate-member-area'
+  defaults:
+    _controller: '\Drupal\oasis_manager\Controller\OasisManagerController::associateMemberArea'
+    _title: 'Associate Member Area'
+  requirements:
+    _custom_access: '\Drupal\oasis_manager\Controller\OasisManagerController::userIsAssociateMember'

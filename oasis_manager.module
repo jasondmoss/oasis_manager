@@ -1,0 +1,156 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * @file
+ * Contains oasis_manager.module.
+ *
+ * Provides integration between Drupal and the OASIS/NAF system for user
+ * authentication and authorization.
+ *
+ * @link https://www.jdmlabs.com/
+ * @subpackage OASIS_MANAGER
+ * @author Jason D. Moss <work@jdmlabs.com>
+ * @copyright 2025 Jason D. Moss
+ * @category Module
+ * @package DRUPAL11
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Url;
+
+
+/**
+ * Implements hook_help().
+ *
+ * @param string $route_name
+ * @param \Drupal\Core\Routing\RouteMatchInterface $route_match
+ *
+ * @return string
+ */
+function oasis_manager_help(
+    string $route_name,
+    RouteMatchInterface $route_match
+): string {
+    $output = '';
+
+    if ($route_name === 'help.page.oasis_manager') {
+        $output = '<h3>' . t('About') . '</h3>';
+        $output .= '<p>' . t('The Oasis Manager module provides integration between '
+            . 'Drupal and the OASIS/NAF system for user authentication and '
+            . 'authorization. It allows users to log in to the Drupal site using '
+            . 'their OASIS credentials, synchronizes user roles and permissions.')
+            . '</p>';
+    }
+
+    return $output;
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter() for user_login_form.
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ * @param string $form_id
+ */
+function oasis_manager_form_user_login_form_alter(
+    array &$form,
+    FormStateInterface $form_state,
+    string $form_id
+): void {
+    $form['name']['#title'] = t('Email address or username');
+    $form['name']['#description'] = t('Enter your email address or username.');
+
+    // Completely replace all core validation handlers to prevent
+    // "Login attempt failed" messages when OASIS authentication succeeds.
+    // The core handlers are ::validateAuthentication and ::validateFinal
+    $form['#validate'] = ['oasis_manager_user_login_validate'];
+
+    // Add our submit handler at the beginning of the submit handlers array
+    // to ensure it's called before the core submit handler.
+    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter() for user_login_block_form.
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ * @param string $form_id
+ */
+function oasis_manager_form_user_login_block_alter(
+    array &$form,
+    FormStateInterface $form_state,
+    string $form_id
+): void {
+    $form['name']['#title'] = t('Email address or username');
+
+    // Completely replace all core validation handlers to prevent
+    // "Login attempt failed" messages when OASIS authentication succeeds.
+    // The core handlers are ::validateAuthentication and ::validateFinal
+    $form['#validate'] = ['oasis_manager_user_login_validate'];
+
+    // Add our submit handler at the beginning of the submit handlers array
+    // to ensure it's called before the core submit handler.
+    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
+}
+
+
+/**
+ * Custom validation handler for user login forms.
+ *
+ * This function delegates the actual validation to the OasisAuthenticationService.
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function oasis_manager_user_login_validate(
+    array &$form,
+    FormStateInterface $form_state
+): void {
+    /** @var \Drupal\oasis_manager\Service\OasisAuthenticationService $auth_service */
+    $auth_service = Drupal::service('oasis_manager.authentication');
+    $auth_service->validateLogin($form, $form_state);
+}
+
+
+/**
+ * Custom submit handler for user login form.
+ *
+ * Redirects users based on their authentication type:
+ * - OASIS members are redirected to node/478
+ * - All other users are redirected to the front page
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function oasis_manager_user_login_form_submit(
+    array $form,
+    FormStateInterface $form_state
+): void {
+    // Determine the redirect URL based on authentication type.
+    $redirect_url = null;
+    if ($form_state->get('member')) {
+        // OASIS members are redirected to node/478.
+        $redirect_url = Url::fromRoute('entity.node.canonical', [
+            'node' => 478
+        ])->toString();
+    } else {
+        // All other users are redirected to the front page.
+        $redirect_url = Url::fromRoute('<front>')->toString();
+    }
+
+    // Set the destination parameter to prevent the core submit handler from
+    // overriding our redirect.
+    if ($redirect_url) {
+        $request = Drupal::request();
+        $request->request->set('destination', $redirect_url);
+        $request->query->set('destination', $redirect_url);
+    }
+}
+
+/* <> */

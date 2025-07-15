@@ -1,0 +1,16 @@
+oasis_manager.settings:
+  type: config_object
+  label: 'Oasis Manager settings'
+  mapping:
+    oasis_profile_base_url:
+      type: string
+      label: 'OASIS Profile Base URL'
+      description: 'The base URL for OASIS profile management pages'
+    api_timeout:
+      type: integer
+      label: 'API Timeout'
+      description: 'Timeout in seconds for OASIS API requests'
+    api_connect_timeout:
+      type: integer
+      label: 'API Connect Timeout'
+      description: 'Connection timeout in seconds for OASIS API requests'

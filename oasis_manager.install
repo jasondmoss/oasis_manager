@@ -1,0 +1,308 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Oasis Manager module.
+ *
+ * @link https://www.jdmlabs.com/
+ * @subpackage OASIS_MANAGER
+ * @author Jason D. Moss <work@jdmlabs.com>
+ * @copyright 2025 Jason D. Moss
+ * @category Module
+ * @package DRUPAL11
+ */
+
+use Drupal\Core\Config\FileStorage;
+use Drupal\user\Entity\Role;
+
+/**
+ * Implements hook_install().
+ *
+ * Performs setup tasks when the module is installed.
+ */
+function oasis_manager_install(): void
+{
+    // Create required user roles.
+    _oasis_manager_create_roles();
+
+    // Install default configuration.
+    _oasis_manager_install_config();
+
+    // Log successful installation.
+    Drupal::logger('oasis_manager')->info('Oasis Manager module installed successfully.');
+
+    // Display a message to the user.
+    Drupal::messenger()
+        ->addStatus(t(
+            'Oasis Manager module has been installed. Please configure the OASIS API '
+            . 'settings in your environment variables.'
+        ));
+}
+
+
+/**
+ * Implements hook_uninstall().
+ *
+ * Performs cleanup tasks when the module is uninstalled.
+ */
+function oasis_manager_uninstall(): void
+{
+    // Remove configuration.
+    _oasis_manager_remove_config();
+
+    // Remove user roles (only if they have no users assigned).
+    _oasis_manager_remove_roles();
+
+    // Log successful uninstallation.
+    Drupal::logger('oasis_manager')
+        ->info('Oasis Manager module uninstalled successfully.');
+
+    // Display a message to the user.
+    Drupal::messenger()
+        ->addStatus(t(
+            'Oasis Manager module has been uninstalled. User roles have been '
+            . 'preserved if they contain users.'
+        ));
+}
+
+
+/**
+ * Creates the required user roles for OASIS integration.
+ */
+function _oasis_manager_create_roles(): void
+{
+    $roles = [
+        'regular_member' => [
+            'label' => 'Regular Member',
+            'weight' => 5
+        ],
+        'associate_member' => [
+            'label' => 'Associate Member',
+            'weight' => 6
+        ]
+    ];
+
+    foreach ($roles as $role_id => $role_info) {
+        // Check if role already exists.
+        if (! Role::load($role_id)) {
+            $role = Role::create([
+                'id' => $role_id,
+                'label' => $role_info['label'],
+                'weight' => $role_info['weight']
+            ]);
+            $role->save();
+
+            Drupal::logger('oasis_manager')
+                ->info('Created user role: @role', [
+                    '@role' => $role_info['label']
+                ]);
+        } else {
+            Drupal::logger('oasis_manager')
+                ->info('User role already exists: @role', [
+                    '@role' => $role_info['label']
+                ]);
+        }
+    }
+}
+
+
+/**
+ * Removes user roles created by the module.
+ *
+ * Only removes roles if they have no users assigned to prevent data loss.
+ */
+function _oasis_manager_remove_roles(): void
+{
+    $role_ids = ['regular_member', 'associate_member'];
+
+    foreach ($role_ids as $role_id) {
+        $role = Role::load($role_id);
+        if ($role) {
+            // Check if any users have this role.
+            $query = Drupal::entityQuery('user')
+                ->condition('roles', $role_id)
+                ->accessCheck(false)
+                ->count();
+            $user_count = $query->execute();
+
+            if ($user_count == 0) {
+                $role->delete();
+
+                Drupal::logger('oasis_manager')->info('Removed user role: @role', [
+                    '@role' => $role->label()
+                ]);
+            } else {
+                Drupal::logger('oasis_manager')
+                    ->warning('Preserved user role @role because it has @count users assigned', [
+                        '@role' => $role->label(),
+                        '@count' => $user_count,
+                    ]);
+            }
+        }
+    }
+}
+
+
+/**
+ * Installs default configuration for the module.
+ */
+function _oasis_manager_install_config(): void
+{
+    $config_factory = Drupal::configFactory();
+
+    // Install default settings.
+    $config = $config_factory->getEditable('oasis_manager.settings');
+
+    // Set default values if they don't exist.
+    if ($config->isNew()) {
+        $config->setData([
+            'oasis_profile_base_url' => 'https://members.ajc-ajj.ca',
+            'api_timeout' => 30,
+            'api_connect_timeout' => 10
+        ]);
+        $config->save();
+
+        Drupal::logger('oasis_manager')
+            ->info('Installed default configuration for Oasis Manager.');
+    }
+}
+
+
+/**
+ * Removes configuration created by the module.
+ */
+function _oasis_manager_remove_config(): void
+{
+    $config_names = [
+        'oasis_manager.settings',
+    ];
+
+    foreach ($config_names as $config_name) {
+        $config = Drupal::configFactory()->getEditable($config_name);
+        if (! $config->isNew()) {
+            $config->delete();
+            Drupal::logger('oasis_manager')
+                ->info('Removed configuration: @config', [
+                    '@config' => $config_name
+                ]);
+        }
+    }
+}
+
+
+/**
+ * Implements hook_requirements().
+ *
+ * Checks system requirements and configuration.
+ *
+ * @param string $phase
+ *
+ * @return array
+ */
+function oasis_manager_requirements(string $phase): array
+{
+    $requirements = [];
+
+    if ($phase === 'runtime') {
+        // Check if required environment variables are set.
+        $env_vars = [
+            'OASIS_API_USER_ENDPOINT' => 'OASIS API User Endpoint',
+            'OASIS_ADMIN_USER' => 'OASIS Admin User',
+            'OASIS_ADMIN_PASSWORD' => 'OASIS Admin Password'
+        ];
+
+        $missing_vars = [];
+        foreach ($env_vars as $var => $description) {
+            if (empty($_ENV[$var])) {
+                $missing_vars[] = $var;
+            }
+        }
+
+        if (! empty($missing_vars)) {
+            $requirements['oasis_manager_env'] = [
+                'title' => t('Oasis Manager Environment Variables'),
+                'value' => t('Missing required environment variables'),
+                'description' => t('The following environment variables are required: @vars', [
+                    '@vars' => implode(', ', $missing_vars)
+                ]),
+                'severity' => REQUIREMENT_ERROR,
+            ];
+        } else {
+            $requirements['oasis_manager_env'] = [
+                'title' => t('Oasis Manager Environment Variables'),
+                'value' => t('All required environment variables are configured'),
+                'severity' => REQUIREMENT_OK
+            ];
+        }
+
+        // Check if required user roles exist.
+        $required_roles = ['regular_member', 'associate_member'];
+        $missing_roles = [];
+
+        foreach ($required_roles as $role_id) {
+            if (! Role::load($role_id)) {
+                $missing_roles[] = $role_id;
+            }
+        }
+
+        if (! empty($missing_roles)) {
+            $requirements['oasis_manager_roles'] = [
+                'title' => t('Oasis Manager User Roles'),
+                'value' => t('Missing required user roles'),
+                'description' => t('The following user roles are missing: @roles. Try reinstalling the module.', [
+                    '@roles' => implode(', ', $missing_roles)
+                ]),
+                'severity' => REQUIREMENT_ERROR
+            ];
+        } else {
+            $requirements['oasis_manager_roles'] = [
+                'title' => t('Oasis Manager User Roles'),
+                'value' => t('All required user roles are present'),
+                'severity' => REQUIREMENT_OK
+            ];
+        }
+
+        // Check configuration.
+        $config = Drupal::config('oasis_manager.settings');
+        if ($config->isNew() || empty($config->get('oasis_profile_base_url'))) {
+            $requirements['oasis_manager_config'] = [
+                'title' => t('Oasis Manager Configuration'),
+                'value' => t('Configuration incomplete'),
+                'description' => t('The Oasis Manager configuration is incomplete. Please check the module settings.'),
+                'severity' => REQUIREMENT_WARNING
+            ];
+        } else {
+            $requirements['oasis_manager_config'] = [
+                'title' => t('Oasis Manager Configuration'),
+                'value' => t('Configuration complete'),
+                'severity' => REQUIREMENT_OK
+            ];
+        }
+    }
+
+    return $requirements;
+}
+
+
+/**
+ * Update hook to ensure roles exist (for existing installations).
+ */
+function oasis_manager_update_9001(): void
+{
+    // Ensure required roles exist for existing installations.
+    _oasis_manager_create_roles();
+}
+
+
+/**
+ * Update hook to install default configuration (for existing installations).
+ */
+function oasis_manager_update_9002(): void
+{
+    // Install default configuration for existing installations.
+    _oasis_manager_install_config();
+}
+
+/* <> */
