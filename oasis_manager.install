@@ -14,7 +14,6 @@ declare(strict_types=1);
  * @package DRUPAL11
  */
 
-use Drupal\Core\Config\FileStorage;
 use Drupal\user\Entity\Role;
 
 /**
@@ -127,7 +126,7 @@ function _oasis_manager_remove_roles(): void
                 ->count();
             $user_count = $query->execute();
 
-            if ($user_count == 0) {
+            if ($user_count === 0) {
                 $role->delete();
 
                 Drupal::logger('oasis_manager')->info('Removed user role: @role', [

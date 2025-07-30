@@ -22,7 +22,7 @@ use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\Url;
 use Drupal\oasis_manager\Service\OasisAuthenticationService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpFoundation\RedirectResponse;
+// use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
@@ -116,16 +116,16 @@ class OasisManagerEventSubscriber implements EventSubscriberInterface
         $request = $event->getRequest();
 
         // Check if this is a request to the default logout route.
-        if ($request->getPathInfo() === '/user/logout') {
-            // Only check authenticated users for logout redirect.
-            if (! $this->currentUser->isAnonymous() && $this->isOasisUser()) {
-                // Redirect OASIS members to the custom logout route.
-                $redirect_url = Url::fromRoute('oasis_manager.logout')->toString();
-                $response = new RedirectResponse($redirect_url);
-                $event->setResponse($response);
-                return;
-            }
-        }
+        // if ($request->getPathInfo() === '/user/logout') {
+        //     // Only check authenticated users for logout redirect.
+        //     if (! $this->currentUser->isAnonymous() && $this->isOasisUser()) {
+        //         // Redirect OASIS members to the custom logout route.
+        //         $redirect_url = Url::fromRoute('oasis_manager.logout')->toString();
+        //         $response = new RedirectResponse($redirect_url);
+        //         $event->setResponse($response);
+        //         return;
+        //     }
+        // }
 
         // Only check authenticated users for session validation.
         if ($this->currentUser->isAnonymous()) {

@@ -33,6 +33,7 @@ When the module is installed, it automatically:
 
 - **Creates User Roles**: Creates the required `regular_member` and `associate_member` user roles
 - **Installs Default Configuration**: Sets up default configuration values for:
+  - OASIS Profile Base URL: `https://members.ajc-ajj.ca`
   - API Timeout: 30 seconds
   - API Connect Timeout: 10 seconds
 - **Validates Environment**: Checks that required environment variables are configured

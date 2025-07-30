@@ -138,7 +138,8 @@ class OasisAuthenticationService
             }
         }
 
-        // If this is a member login or we don't have a local user, try OASIS authentication.
+        // If this is a member login or we don't have a local user, try OASIS
+        // authentication.
         if ($is_member || ! $user) {
             if ($this->authenticateWithOasis($form_state, $email, $password)) {
                 // Authentication successful, no need for further validation.
@@ -148,7 +149,8 @@ class OasisAuthenticationService
             }
         }
 
-        // If we have a local non-member user, authenticate them with Drupal's standard method.
+        // If we have a local non-member user, authenticate them with Drupal's
+        // standard method.
         if ($user && ! $is_member) {
             // Authenticate the user using Drupal's standard authentication.
             if ($this->userAuth->authenticateAccount($user, $password)) {
@@ -158,22 +160,18 @@ class OasisAuthenticationService
                 $form_state->setValidationComplete();
 
                 return;
-            } else {
-                // Password is incorrect for non-member user.
-                $form_state->setErrorByName(
-                    'name',
-                    t('Unrecognized username/email address or password.')
-                );
-
-                return;
             }
+
+            // Password is incorrect for non-member user.
+            $form_state
+                ->setErrorByName('name', t('Unrecognized username/email address or password.'));
+
+            return;
         }
 
         // If we get here, authentication failed.
-        $form_state->setErrorByName(
-            'name',
-            t('Unrecognized username/email address or password.')
-        );
+        $form_state
+            ->setErrorByName('name', t('Unrecognized username/email address or password.'));
     }
 
 
@@ -227,11 +225,6 @@ class OasisAuthenticationService
                                 '@url' => 'https://ajcapi.azurewebsites.net/'
                             ]
                         ));
-                        $this->loggerFactory
-                            ->get('oasis_manager')
-                            ->warning('OASIS API unavailable during login attempt for @email', [
-                                '@email' => $email
-                            ]);
                         break;
 
                     case 'invalid_credentials':
@@ -246,11 +239,6 @@ class OasisAuthenticationService
                             'There was a problem communicating with the authentication '
                             . 'service. Please try again later.'
                         ));
-                        $this->loggerFactory
-                            ->get('oasis_manager')
-                            ->warning('Invalid response from OASIS API during login attempt for @email', [
-                                '@email' => $email
-                            ]);
                         break;
 
                     case 'invalid_input':
@@ -262,14 +250,6 @@ class OasisAuthenticationService
                             'An unexpected error occurred during authentication. '
                             . 'Please try again later.'
                         ));
-                        $this->loggerFactory
-                            ->get('oasis_manager')
-                            ->warning(
-                                'Unknown error type during OASIS authentication for @email: @error_type', [
-                                    '@email' => $email,
-                                    '@error_type' => $auth_result['error_type'] ?? 'unknown'
-                                ]
-                            );
                         break;
                 }
 
@@ -290,9 +270,9 @@ class OasisAuthenticationService
                     ->get('oasis_manager')
                     ->error('Failed to create or update user from OASIS data');
                 $this->messenger
-                    ->addError(t(
-                        'There was a problem setting up your account. Please contact support.'
-                    ));
+                    ->addError(
+                        t('There was a problem setting up your account. Please contact support.')
+                    );
 
                 return false;
             }
@@ -309,14 +289,13 @@ class OasisAuthenticationService
         } catch (Exception $e) {
             $this->loggerFactory
                 ->get('oasis_manager')
-                ->error(
-                    'Error during OASIS authentication: @error', [
-                        '@error' => $e->getMessage()
-                    ]
+                ->error('Error during OASIS authentication: @error', [
+                    '@error' => $e->getMessage()
+                ]);
+            $this->messenger
+                ->addError(
+                    t('An unexpected error occurred during authentication. Please try again later.')
                 );
-            $this->messenger->addError(t(
-                'An unexpected error occurred during authentication. Please try again later.'
-            ));
 
             return false;
         }

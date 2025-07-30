@@ -6,14 +6,6 @@ oasis_manager.logout:
   requirements:
     _user_is_logged_in: 'TRUE'
 
-oasis_manager.manage_profile:
-  path: '/oasis-profile'
-  defaults:
-    _controller: '\Drupal\oasis_manager\Controller\OasisManagerController::redirectToProfile'
-    _title: 'Manage Profile'
-  requirements:
-    _user_is_logged_in: 'TRUE'
-
 oasis_manager.regular_member:
   path: '/regular-member-area'
   defaults:

@@ -5,7 +5,7 @@ services:
 
   oasis_manager.user_manager:
     class: Drupal\oasis_manager\Service\OasisUserManager
-    arguments: [ '@entity_type.manager', '@oasis_manager.api_client', '@logger.factory', '@current_user', '@request_stack' ]
+    arguments: [ '@entity_type.manager', '@oasis_manager.api_client', '@current_user', '@logger.factory', '@request_stack' ]
 
   oasis_manager.authentication:
     class: Drupal\oasis_manager\Service\OasisAuthenticationService

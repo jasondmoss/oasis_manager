@@ -21,6 +21,7 @@ use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\user\Entity\User;
+use Exception;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 class OasisUserManager
@@ -41,18 +42,18 @@ class OasisUserManager
     protected OasisApiClient $oasisApiClient;
 
     /**
-     * The logger factory.
-     *
-     * @var \Drupal\Core\Logger\LoggerChannelFactoryInterface
-     */
-    protected LoggerChannelFactoryInterface $loggerFactory;
-
-    /**
      * The current user.
      *
      * @var \Drupal\Core\Session\AccountProxyInterface
      */
     protected AccountProxyInterface $currentUser;
+
+    /**
+     * The logger factory.
+     *
+     * @var \Drupal\Core\Logger\LoggerChannelFactoryInterface
+     */
+    protected LoggerChannelFactoryInterface $loggerFactory;
 
     /**
      * The request stack.
@@ -69,24 +70,24 @@ class OasisUserManager
      *   The entity type manager.
      * @param \Drupal\oasis_manager\Service\OasisApiClient $oasis_api_client
      *   The OASIS API client.
-     * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
-     *   The logger factory.
      * @param \Drupal\Core\Session\AccountProxyInterface $current_user
      *   The current user.
+     * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
+     *   The logger factory.
      * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
      *   The request stack.
      */
     public function __construct(
         EntityTypeManagerInterface $entity_type_manager,
         OasisApiClient $oasis_api_client,
-        LoggerChannelFactoryInterface $logger_factory,
         AccountProxyInterface $current_user,
+        LoggerChannelFactoryInterface $logger_factory,
         RequestStack $request_stack
     ) {
         $this->entityTypeManager = $entity_type_manager;
         $this->oasisApiClient = $oasis_api_client;
-        $this->loggerFactory = $logger_factory;
         $this->currentUser = $current_user;
+        $this->loggerFactory = $logger_factory;
         $this->requestStack = $request_stack;
     }
 
@@ -135,7 +136,7 @@ class OasisUserManager
                 ]);
 
             return null;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->loggerFactory
                 ->get('oasis_manager')
                 ->error('Unexpected error processing OASIS user data: @error', [
@@ -187,9 +188,6 @@ class OasisUserManager
      *
      * @return \Drupal\user\Entity\User
      *   The new user entity.
-     *
-     * @throws \Drupal\Core\Entity\EntityStorageException
-     *   Thrown if the user cannot be saved.
      */
     protected function createUser(
         string $member_id,

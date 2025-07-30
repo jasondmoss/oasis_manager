@@ -19,101 +19,54 @@ namespace Drupal\oasis_manager\Controller;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Session\AccountInterface;
-use Drupal\Core\Url;
+use Drupal\user\UserAuthInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 
 class OasisManagerController extends ControllerBase
 {
 
     /**
-     * Logs out the current user and redirects based on user type.
+     * The user authentication service.
      *
-     * OASIS members are redirected to node/490, all other users to <front>.
-     *
-     * @param \Symfony\Component\HttpFoundation\Request $request
-     *   The current request.
-     *
-     * @return \Symfony\Component\HttpFoundation\RedirectResponse
-     *   A redirect response to the appropriate page.
+     * @var \Drupal\user\UserAuthInterface
      */
-    public function logout(Request $request): RedirectResponse
+    protected UserAuthInterface $userAuth;
+
+
+    /**
+     * Constructs a new OasisManagerController object.
+     *
+     * @param \Drupal\user\UserAuthInterface $user_auth
+     *   The user authentication service.
+     */
+    public function __construct(UserAuthInterface $user_auth)
     {
-        // Check if the user is an OASIS member before logging out
-        // We must check this BEFORE calling user_logout() as it clears the session
-        $session = $request->getSession();
-        $is_oasis_member = $session->get('member');
-
-        // Log out the user (this will clear the session)
-        user_logout();
-
-        // Determine redirect URL based on user type.
-        if ($is_oasis_member) {
-            // OASIS members are redirected to node/490.
-            $redirect_url = Url::fromRoute('entity.node.canonical', [
-                'node' => 490
-            ])->toString();
-        } else {
-            // All other users are redirected to the front page.
-            $redirect_url = Url::fromRoute('<front>')->toString();
-        }
-
-        return new RedirectResponse($redirect_url);
+        $this->userAuth = $user_auth;
     }
 
 
     /**
-     * Redirects the user to their OASIS profile management page.
+     * {@inheritdoc}
+     */
+    public static function create(ContainerInterface $container): static
+    {
+        return new static(
+            $container->get('user.auth')
+        );
+    }
+
+
+    /**
+     * Logs out the current user.
      *
      * @param \Symfony\Component\HttpFoundation\Request $request
      *   The current request.
-     *
-     * @return \Symfony\Component\HttpFoundation\RedirectResponse
-     *   A redirect response to the OASIS profile page.
      */
-    public function redirectToProfile(Request $request): RedirectResponse
+    public function logout(Request $request): void
     {
-        $current_user = $this->currentUser();
-        $language = $this->languageManager()->getCurrentLanguage()->getId();
-        $session = $request->getSession();
-
-        // Check if the user has the required roles.
-        if (! $this->userHasMemberRole($current_user)) {
-            $this->messenger()->addError($this->t('You are not logged in as an OASIS user'));
-
-            return new RedirectResponse(Url::fromRoute('<front>')->toString());
-        }
-
-        // Check if the OASIS token is available using proper session handling.
-        $oasis_token = $session->get('OasisAPIToken');
-        if (empty($oasis_token)) {
-            $this->messenger()->addWarning($this->t(
-                'OASIS Token session is empty, will not be able to log into the OASIS site.'
-            ));
-
-            return new RedirectResponse(Url::fromRoute('<front>')->toString());
-        }
-
-        // Get configurable URLs from module configuration
-        $config = $this->config('oasis_manager.settings');
-        $base_url = $config->get('oasis_profile_base_url') ?: 'https://members.ajc-ajj.ca';
-
-        // Determine the URL based on the current language.
-        $profile_path = ($language === 'en')
-            ? '/en/membership/update-member-profile'
-            : '/fr/services-aux-membres/update-member-profile';
-
-        $url = $base_url . $profile_path;
-
-        // Validate the URL before redirecting
-        if (! filter_var($url, FILTER_VALIDATE_URL)) {
-            $this->messenger()->addError($this->t('Invalid profile URL configuration.'));
-
-            return new RedirectResponse(Url::fromRoute('<front>')->toString());
-        }
-
-        return new RedirectResponse($url);
+        // Log out the user (this will clear the session)
+        $this->userAuth->logout();
     }
 
 
@@ -180,8 +133,9 @@ class OasisManagerController extends ControllerBase
      * @return \Drupal\Core\Access\AccessResult
      *   The access result.
      */
-    public static function userIsAssociateMember(AccountInterface $account): AccessResult
-    {
+    public static function userIsAssociateMember(
+        AccountInterface $account
+    ): AccessResult {
         return AccessResult::allowedIf(
             in_array('associate_member', $account->getRoles(), true)
             || $account->hasPermission('administer users')

@@ -18,11 +18,13 @@ namespace Drupal\Tests\oasis_manager\Unit;
 
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Logger\LoggerChannelInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\oasis_manager\Service\OasisApiClient;
 use Drupal\oasis_manager\Service\OasisUserManager;
+use Drupal\rabbit_hole\BehaviorSettingsManagerInterface;
 use Drupal\Tests\UnitTestCase;
 use Drupal\user\Entity\User;
 use Prophecy\Argument;
@@ -77,6 +79,20 @@ class OasisUserManagerTest extends UnitTestCase
     protected RequestStack|ObjectProphecy $requestStack;
 
     /**
+     * The module handler prophecy.
+     *
+     * @var \Prophecy\Prophecy\ObjectProphecy
+     */
+    protected ModuleHandlerInterface|ObjectProphecy $moduleHandler;
+
+    /**
+     * The rabbit hole behavior settings manager prophecy.
+     *
+     * @var \Prophecy\Prophecy\ObjectProphecy
+     */
+    protected BehaviorSettingsManagerInterface|ObjectProphecy $rabbitHoleBehaviorSettingsManager;
+
+    /**
      * The OASIS user manager service.
      *
      * @var \Drupal\oasis_manager\Service\OasisUserManager
@@ -98,6 +114,8 @@ class OasisUserManagerTest extends UnitTestCase
         $this->loggerChannel = $this->prophesize(LoggerChannelInterface::class);
         $this->currentUser = $this->prophesize(AccountProxyInterface::class);
         $this->requestStack = $this->prophesize(RequestStack::class);
+        $this->moduleHandler = $this->prophesize(ModuleHandlerInterface::class);
+        $this->rabbitHoleBehaviorSettingsManager = $this->prophesize(BehaviorSettingsManagerInterface::class);
 
         // Set up the logger factory to return our logger channel.
         $this->loggerFactory->get('oasis_manager')->willReturn($this->loggerChannel->reveal());
@@ -106,9 +124,11 @@ class OasisUserManagerTest extends UnitTestCase
         $this->oasisUserManager = new OasisUserManager(
             $this->entityTypeManager->reveal(),
             $this->oasisApiClient->reveal(),
-            $this->loggerFactory->reveal(),
             $this->currentUser->reveal(),
-            $this->requestStack->reveal()
+            $this->loggerFactory->reveal(),
+            $this->requestStack->reveal(),
+            $this->moduleHandler->reveal(),
+            $this->rabbitHoleBehaviorSettingsManager->reveal()
         );
     }
 

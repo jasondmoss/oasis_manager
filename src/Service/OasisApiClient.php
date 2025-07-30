@@ -23,6 +23,7 @@ use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use JsonException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 
 class OasisApiClient
@@ -87,10 +88,6 @@ class OasisApiClient
     {
         // Input validation.
         if (empty($email) || empty($password)) {
-            $this->loggerFactory
-                ->get('oasis_manager')
-                ->warning('Empty email or password provided for OASIS authentication');
-
             return [
                 'success' => false,
                 'data' => null,
@@ -100,12 +97,6 @@ class OasisApiClient
 
         // Validate email format.
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->loggerFactory->get('oasis_manager')->warning(
-                'Invalid email format provided for OASIS authentication: @email', [
-                    '@email' => $email
-                ]
-            );
-
             return [
                 'success' => false,
                 'data' => null,
@@ -159,7 +150,7 @@ class OasisApiClient
                 'error_type' => 'invalid_credentials'
             ];
         } catch (ConnectException $e) {
-            // Connection failed - API is likely unavailable
+            // Connection failed - API is likely unavailable.
             $this->loggerFactory
                 ->get('oasis_manager')
                 ->error('Cannot connect to OASIS API: @error', [
@@ -172,10 +163,10 @@ class OasisApiClient
                 'error_type' => 'api_unavailable'
             ];
         } catch (RequestException $e) {
-            // HTTP error (4xx, 5xx) - API responded but with an error
+            // HTTP error (4xx, 5xx) - API responded but with an error.
             $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 0;
             if ($statusCode >= 500) {
-                // Server error - treat as API unavailable
+                // Server error - treat as API unavailable.
                 $this->loggerFactory
                     ->get('oasis_manager')
                     ->error('OASIS API server error (@status): @error', [
@@ -188,23 +179,23 @@ class OasisApiClient
                     'data' => null,
                     'error_type' => 'api_unavailable'
                 ];
-            } else {
-                // Client error - likely authentication issue
-                $this->loggerFactory
-                    ->get('oasis_manager')
-                    ->error('OASIS API client error (@status): @error', [
-                        '@status' => $statusCode,
-                        '@error' => $e->getMessage()
-                    ]);
-
-                return [
-                    'success' => false,
-                    'data' => null,
-                    'error_type' => 'invalid_credentials'
-                ];
             }
+
+            // Client error - likely authentication issue.
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->error('OASIS API client error (@status): @error', [
+                    '@status' => $statusCode,
+                    '@error' => $e->getMessage()
+                ]);
+
+            return [
+                'success' => false,
+                'data' => null,
+                'error_type' => 'invalid_credentials'
+            ];
         } catch (GuzzleException $e) {
-            // Other Guzzle exceptions
+            // Other Guzzle exceptions.
             $this->loggerFactory
                 ->get('oasis_manager')
                 ->error('Error communicating with OASIS API: @error', [
@@ -216,7 +207,7 @@ class OasisApiClient
                 'data' => null,
                 'error_type' => 'api_unavailable'
             ];
-        } catch (\JsonException $e) {
+        } catch (JsonException $e) {
             $this->loggerFactory
                 ->get('oasis_manager')
                 ->error('Invalid JSON response from OASIS API: @error', [
@@ -257,7 +248,7 @@ class OasisApiClient
     {
         $sanitized = new \stdClass();
 
-        // Sanitize string fields
+        // Sanitize string fields.
         $string_fields = [
             'MemberID',
             'FirstName',
@@ -275,7 +266,7 @@ class OasisApiClient
             }
         }
 
-        // Handle OasisAPIToken separately (don't HTML encode tokens)
+        // Handle OasisAPIToken separately (don't HTML encode tokens).
         if (isset($data->OasisAPIToken)) {
             $sanitized->OasisAPIToken = trim((string) $data->OasisAPIToken);
         }
@@ -298,9 +289,9 @@ class OasisApiClient
         $endpoint = $_ENV['OASIS_API_USER_ENDPOINT'] ?? null;
 
         if (! $endpoint) {
-            $this->loggerFactory->get('oasis_manager')->critical(
-                'OASIS_API_USER_ENDPOINT environment variable is not set'
-            );
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->critical('OASIS_API_USER_ENDPOINT environment variable is not set');
 
             throw new ServiceNotFoundException(
                 'OASIS_API_USER_ENDPOINT', null, null, [],
@@ -328,10 +319,9 @@ class OasisApiClient
         $password = $_ENV['OASIS_ADMIN_PASSWORD'] ?? null;
 
         if (! $username || ! $password) {
-            $this->loggerFactory->get('oasis_manager')->critical(
-                'OASIS_ADMIN_USER or OASIS_ADMIN_PASSWORD environment variables '
-                    . 'are not set'
-            );
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->critical('OASIS_ADMIN_USER or OASIS_ADMIN_PASSWORD environment variables are not set');
 
             throw new ServiceNotFoundException(
                 'OASIS credentials', null, null, [],

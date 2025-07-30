@@ -71,7 +71,7 @@ function oasis_manager_form_user_login_form_alter(
 
     // Add our submit handler at the beginning of the submit handlers array
     // to ensure it's called before the core submit handler.
-    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
+//    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
 }
 
 
@@ -96,7 +96,7 @@ function oasis_manager_form_user_login_block_alter(
 
     // Add our submit handler at the beginning of the submit handlers array
     // to ensure it's called before the core submit handler.
-    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
+//    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
 }
 
 
@@ -128,29 +128,29 @@ function oasis_manager_user_login_validate(
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function oasis_manager_user_login_form_submit(
+/*function oasis_manager_user_login_form_submit(
     array $form,
     FormStateInterface $form_state
 ): void {
     // Determine the redirect URL based on authentication type.
-    $redirect_url = null;
-    if ($form_state->get('member')) {
-        // OASIS members are redirected to node/478.
-        $redirect_url = Url::fromRoute('entity.node.canonical', [
-            'node' => 478
-        ])->toString();
-    } else {
-        // All other users are redirected to the front page.
-        $redirect_url = Url::fromRoute('<front>')->toString();
-    }
+     $redirect_url = null;
+     if ($form_state->get('member')) {
+         // OASIS members are redirected to node/478.
+         $redirect_url = Url::fromRoute('entity.node.canonical', [
+             'node' => 478
+         ])->toString();
+     } else {
+         // All other users are redirected to the front page.
+         $redirect_url = Url::fromRoute('<front>')->toString();
+     }
 
-    // Set the destination parameter to prevent the core submit handler from
-    // overriding our redirect.
-    if ($redirect_url) {
-        $request = Drupal::request();
-        $request->request->set('destination', $redirect_url);
-        $request->query->set('destination', $redirect_url);
-    }
-}
+     // Set the destination parameter to prevent the core submit handler from
+     // overriding our redirect.
+     if ($redirect_url) {
+         $request = Drupal::request();
+         $request->request->set('destination', $redirect_url);
+         $request->query->set('destination', $redirect_url);
+     }
+}*/
 
 /* <> */
