@@ -108,53 +108,61 @@ class OasisAuthenticationService
         $name_or_email = $form_state->getValue('name');
         $password = $form_state->getValue('pass');
 
-        // Check if this is a member login attempt.
-        $is_member = true;
-        $email = $name_or_email;
+        $user = null;
 
-        // Check if input is an email address.
-        if (! str_contains($name_or_email, '@')) {
-            // Input is a username, try to load user by username.
-            $user = user_load_by_name($name_or_email);
-            if ($user) {
-                // Get the email address for this user.
-                $email = $user->getEmail();
+        // If input looks like an email, always try OASIS first.
+        if (str_contains((string) $name_or_email, '@')) {
+            $email = $name_or_email;
 
-                // Check if the user has member roles.
-                if (! $this->userHasMemberRole($user)) {
-                    $is_member = false;
-                }
-            }
-        } else {
-            // Input is an email, try loading the user by email.
-            $user = user_load_by_mail($name_or_email);
-            if ($user) {
-                $form_state->setValue('name', $user->getAccountName());
-
-                // Check if the user has member roles.
-                if (! $this->userHasMemberRole($user)) {
-                    $is_member = false;
-                }
-            }
-        }
-
-        // If this is a member login or we don't have a local user, try OASIS
-        // authentication.
-        if ($is_member || ! $user) {
+            // Try OASIS authentication first.
             if ($this->authenticateWithOasis($form_state, $email, $password)) {
-                // Authentication successful, no need for further validation.
                 $form_state->setValidationComplete();
+                return;
+            }
+
+            // OASIS failed. If a local non-member user exists with this email, try local auth.
+            $user = user_load_by_mail($email);
+            if ($user && ! $this->userHasMemberRole($user)) {
+                if ($this->userAuth->authenticateAccount($user, $password)) {
+                    $form_state->set('uid', $user->id());
+                    $form_state->set('user', $user);
+                    $form_state->setValidationComplete();
+                    return;
+                }
+
+                $form_state
+                    ->setErrorByName('name', t('Unrecognized username/email address or password.'));
 
                 return;
             }
+
+            // Otherwise, generic failure.
+            $form_state
+                ->setErrorByName('name', t('Unrecognized username/email address or password.'));
+
+            return;
         }
 
-        // If we have a local non-member user, authenticate them with Drupal's
-        // standard method.
-        if ($user && ! $is_member) {
-            // Authenticate the user using Drupal's standard authentication.
+        // Otherwise, input is a username.
+        $user = user_load_by_name($name_or_email);
+        if ($user) {
+            // If user is a member, authenticate with OASIS using their email.
+            if ($this->userHasMemberRole($user)) {
+                $email = $user->getEmail();
+                if ($this->authenticateWithOasis($form_state, $email, $password)) {
+                    $form_state->setValidationComplete();
+                    return;
+                }
+
+                // For members, do not fall back to local auth if OASIS fails.
+                $form_state
+                    ->setErrorByName('name', t('Unrecognized username/email address or password.'));
+
+                return;
+            }
+
+            // Non-member: use Drupal authentication.
             if ($this->userAuth->authenticateAccount($user, $password)) {
-                // Set form state values for successful login.
                 $form_state->set('uid', $user->id());
                 $form_state->set('user', $user);
                 $form_state->setValidationComplete();
@@ -162,14 +170,13 @@ class OasisAuthenticationService
                 return;
             }
 
-            // Password is incorrect for non-member user.
             $form_state
                 ->setErrorByName('name', t('Unrecognized username/email address or password.'));
 
             return;
         }
 
-        // If we get here, authentication failed.
+        // Unknown username.
         $form_state
             ->setErrorByName('name', t('Unrecognized username/email address or password.'));
     }
@@ -269,10 +276,9 @@ class OasisAuthenticationService
                 $this->loggerFactory
                     ->get('oasis_manager')
                     ->error('Failed to create or update user from OASIS data');
-                $this->messenger
-                    ->addError(
-                        t('There was a problem setting up your account. Please contact support.')
-                    );
+                $this->messenger->addError(
+                    t('There was a problem setting up your account. Please contact support.')
+                );
 
                 return false;
             }
@@ -292,10 +298,9 @@ class OasisAuthenticationService
                 ->error('Error during OASIS authentication: @error', [
                     '@error' => $e->getMessage()
                 ]);
-            $this->messenger
-                ->addError(
-                    t('An unexpected error occurred during authentication. Please try again later.')
-                );
+            $this->messenger->addError(
+                t('An unexpected error occurred during authentication. Please try again later.')
+            );
 
             return false;
         }

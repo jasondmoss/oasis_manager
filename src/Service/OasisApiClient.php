@@ -24,6 +24,7 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use JsonException;
+use stdClass;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 
 class OasisApiClient
@@ -88,6 +89,10 @@ class OasisApiClient
     {
         // Input validation.
         if (empty($email) || empty($password)) {
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->warning('Empty email or password provided for OASIS authentication');
+
             return [
                 'success' => false,
                 'data' => null,
@@ -97,6 +102,12 @@ class OasisApiClient
 
         // Validate email format.
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->warning('Invalid email format provided for OASIS authentication: @email', [
+                    '@email' => $email
+                ]);
+
             return [
                 'success' => false,
                 'data' => null,
@@ -104,13 +115,18 @@ class OasisApiClient
             ];
         }
 
+        // Resolve endpoint and authorization header up-front so missing env
+        // variables throw and bubble up as expected by tests.
+        $endpoint = $this->getApiEndpoint();
+        $authorization = $this->getAuthorizationHeader();
+
         try {
             // Use GET request with credentials in URL as required by OASIS API.
             $response = $this->httpClient
-                ->request('GET', $this->getApiEndpoint() . "$email/$password", [
+                ->request('GET', $endpoint . "$email/$password", [
                     'headers' => [
                         'Accept' => 'application/json',
-                        'Authorization' => $this->getAuthorizationHeader()
+                        'Authorization' => $authorization
                     ],
                     'timeout' => 30,
                     'connect_timeout' => 10
@@ -143,6 +159,13 @@ class OasisApiClient
                     'error_type' => null
                 ];
             }
+
+            // Log authentication failure for auditing and consistency with tests.
+            $this->loggerFactory
+                ->get('oasis_manager')
+                ->notice('OASIS authentication failed for @email', [
+                    '@email' => $email
+                ]);
 
             return [
                 'success' => false,
@@ -246,7 +269,7 @@ class OasisApiClient
      */
     protected function sanitizeOasisData(object $data): object
     {
-        $sanitized = new \stdClass();
+        $sanitized = new stdClass();
 
         // Sanitize string fields.
         $string_fields = [

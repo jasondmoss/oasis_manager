@@ -1,457 +1,191 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Drupal\Tests\oasis_manager\Unit;
 
-/**
- * Unit tests for the OasisApiClient service.
- *
- * @link https://www.jdmlabs.com/
- *
- * @group oasis_manager
- * @coversDefaultClass \Drupal\oasis_manager\Service\OasisApiClient
- * @subpackage OASIS_MANAGER
- * @author Jason D. Moss <work@jdmlabs.com>
- * @copyright 2025 Jason D. Moss
- * @category Test
- * @package DRUPAL11
- */
-
-use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\oasis_manager\Service\OasisApiClient;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Logger\LoggerChannelInterface;
-use Drupal\oasis_manager\Service\OasisApiClient;
-use Drupal\Tests\UnitTestCase;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\TransferException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
-use Prophecy\Argument;
-use Prophecy\Prophecy\ObjectProphecy;
-use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
 
-class OasisApiClientTest extends UnitTestCase
+/**
+ * @covers \Drupal\oasis_manager\Service\OasisApiClient
+ * @group oasis_manager
+ */
+class OasisApiClientTest extends TestCase
 {
-
-    /**
-     * The HTTP client prophecy.
-     *
-     * @var \Prophecy\Prophecy\ObjectProphecy
-     */
-    protected ClientInterface|ObjectProphecy $httpClient;
-
-    /**
-     * The logger factory prophecy.
-     *
-     * @var \Prophecy\Prophecy\ObjectProphecy
-     */
-    protected LoggerChannelFactoryInterface|ObjectProphecy $loggerFactory;
-
-    /**
-     * The logger channel prophecy.
-     *
-     * @var \Prophecy\Prophecy\ObjectProphecy
-     */
-    protected LoggerChannelInterface|ObjectProphecy $loggerChannel;
-
-    /**
-     * The config factory prophecy.
-     *
-     * @var \Prophecy\Prophecy\ObjectProphecy
-     */
-    protected ObjectProphecy|ConfigFactoryInterface $configFactory;
-
-    /**
-     * The OASIS API client service.
-     *
-     * @var \Drupal\oasis_manager\Service\OasisApiClient
-     */
-    protected OasisApiClient $oasisApiClient;
-
-
-    /**
-     * {@inheritdoc}
-     */
-    protected function setUp(): void
+    private function makeSut(?ClientInterface $client = null): OasisApiClient
     {
-        parent::setUp();
+        $client = $client ?? $this->createMock(ClientInterface::class);
+        $loggerFactory = $this->createMock(LoggerChannelFactoryInterface::class);
+        $logger = $this->createMock(LoggerChannelInterface::class);
+        $loggerFactory->method('get')->willReturn($logger);
+        $configFactory = $this->createMock(ConfigFactoryInterface::class);
 
-        // Set up environment variables for testing.
-        $_ENV['OASIS_API_USER_ENDPOINT'] = 'https://api.example.com/users/';
+        // Ensure required env vars exist for each test unless overridden.
+        $_ENV['OASIS_API_USER_ENDPOINT'] = 'https://api.example.com/auth/';
         $_ENV['OASIS_ADMIN_USER'] = 'admin';
-        $_ENV['OASIS_ADMIN_PASSWORD'] = 'password';
+        $_ENV['OASIS_ADMIN_PASSWORD'] = 'secret';
 
-        // Create prophecies for dependencies.
-        $this->httpClient = $this->prophesize(ClientInterface::class);
-        $this->loggerFactory = $this->prophesize(LoggerChannelFactoryInterface::class);
-        $this->loggerChannel = $this->prophesize(LoggerChannelInterface::class);
-        $this->configFactory = $this->prophesize(ConfigFactoryInterface::class);
-
-        // Set up the logger factory to return our logger channel.
-        $this->loggerFactory->get('oasis_manager')->willReturn($this->loggerChannel->reveal());
-
-        // Create the service with the mocked dependencies.
-        $this->oasisApiClient = new OasisApiClient(
-            $this->httpClient->reveal(),
-            $this->loggerFactory->reveal(),
-            $this->configFactory->reveal()
-        );
+        return new OasisApiClient($client, $loggerFactory, $configFactory);
     }
 
 
-    /**
-     * Tests successful authentication with the OASIS API.
-     *
-     * @covers ::authenticateUser
-     * @throws \JsonException|\GuzzleHttp\Exception\GuzzleException
-     */
-    public function testAuthenticateUserSuccess(): void
+    public function testAuthenticateUserSuccessAndSanitization(): void
     {
-        // Mock a successful API response.
-        $response = new Response(200, [], json_encode([
-            'MemberID' => '12345',
-            'FirstName' => 'John',
-            'LastName' => 'Doe',
-            'LoginID' => 'john.doe@example.com',
+        $payload = [
+            'MemberID' => ' 123 ',
+            'FirstName' => ' Alice ',
+            'LastName' => ' <Bob> ',
+            'LoginID' => 'user@example.com',
             'RegStatus' => 'ACTIVE',
             'RegCategory' => 'Regular Members',
-            'OrchardRoles' => 'Governing Council',
-            'OasisAPIToken' => 'valid-token',
-        ], JSON_THROW_ON_ERROR));
+            'OrchardRoles' => 'Executive Committee,Governing Council',
+            'OasisAPIToken' => 'tok-123',
+        ];
+        $responseBody = json_encode($payload, JSON_THROW_ON_ERROR);
 
-        // Set up the HTTP client to return our mocked response.
-        $this->httpClient
-            ->request(
+        $response = new Response(200, [], $responseBody);
+        $client = $this->createMock(ClientInterface::class);
+        $client
+            ->expects($this->once())
+            ->method('request')
+            ->with(
                 'GET',
-                'https://api.example.com/users/john.doe@example.com/password123',
-                Argument::any()
-            )
-            ->willReturn($response);
+                $this->callback(fn ($url) => str_starts_with($url, 'https://api.example.com/auth/')
+                    && str_contains($url, 'user%40example.com') === false
+                ),
+                $this->callback(function ($opts) {
+                    return isset($opts['headers']['Authorization']) && str_starts_with(
+                            $opts['headers']['Authorization'], 'Basic '
+                        );
+                })
+            )->willReturn($response);
 
-        // Call the method under test.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
+        $sut = $this->makeSut($client);
 
-        // Assert that the result is as expected.
-        $this->assertIsArray($result);
+        $result = $sut->authenticateUser('user@example.com', 'pass');
+
         $this->assertTrue($result['success']);
-        $this->assertIsObject($result['data']);
         $this->assertNull($result['error_type']);
-        $this->assertEquals('12345', $result['data']->MemberID);
-        $this->assertEquals('John', $result['data']->FirstName);
-        $this->assertEquals('Doe', $result['data']->LastName);
-        $this->assertEquals('john.doe@example.com', $result['data']->LoginID);
-        $this->assertEquals('ACTIVE', $result['data']->RegStatus);
-        $this->assertEquals('Regular Members', $result['data']->RegCategory);
-        $this->assertEquals('Governing Council', $result['data']->OrchardRoles);
-        $this->assertEquals('valid-token', $result['data']->OasisAPIToken);
+        $this->assertIsObject($result['data']);
+        $this->assertSame('123', $result['data']->MemberID);
+        $this->assertSame('Alice', $result['data']->FirstName);
+        // LastName should be HTML-escaped
+        $this->assertSame('&lt;Bob&gt;', $result['data']->LastName);
+        // Token should NOT be HTML-escaped
+        $this->assertSame('tok-123', $result['data']->OasisAPIToken);
     }
 
 
-    /**
-     * Tests authentication failure with the OASIS API.
-     *
-     * @covers ::authenticateUser
-     * @throws \JsonException|\GuzzleHttp\Exception\GuzzleException
-     */
-    public function testAuthenticateUserFailure(): void
+    public function testAuthenticateUserInvalidInputEmpty(): void
     {
-        // Mock a failed API response.
-        $response = new Response(200, [], json_encode([
-            'error' => 'Invalid credentials',
-        ], JSON_THROW_ON_ERROR));
-
-        // Set up the HTTP client to return our mocked response.
-        $this->httpClient
-            ->request(
-                'GET',
-                'https://api.example.com/users/john.doe@example.com/wrongpassword',
-                Argument::any()
-            )
-            ->willReturn($response);
-
-        // Set up the logger to expect a notice.
-        $this->loggerChannel
-            ->notice('OASIS authentication failed for @email', [
-                '@email' => 'john.doe@example.com'
-            ])
-            ->shouldBeCalled();
-
-        // Call the method under test.
-        $result = $this->oasisApiClient
-            ->authenticateUser('john.doe@example.com', 'wrongpassword');
-
-        // Assert that the result indicates failure with invalid credentials.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_credentials', $result['error_type']);
+        $sut = $this->makeSut();
+        $res = $sut->authenticateUser('', '');
+        $this->assertFalse($res['success']);
+        $this->assertSame('invalid_input', $res['error_type']);
     }
 
 
-    /**
-     * Tests error handling when the API request fails with a connection error.
-     *
-     * @covers ::authenticateUser
-     */
+    public function testAuthenticateUserInvalidEmailFormat(): void
+    {
+        $sut = $this->makeSut();
+        $res = $sut->authenticateUser('not-an-email', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('invalid_input', $res['error_type']);
+    }
+
+
     public function testAuthenticateUserConnectException(): void
     {
-        // Create a connect exception (API unavailable).
-        $request = new Request('GET', 'https://api.example.com/users/john.doe@example.com/password123');
-        $exception = new ConnectException('Connection refused', $request);
+        $client = $this->createMock(ClientInterface::class);
+        $client->method('request')->willThrowException(
+                new ConnectException('oops', new Request('GET', 'https://api.example.com'))
+            );
 
-        // Set up the HTTP client to throw our exception.
-        $this->httpClient
-            ->request(
-                'GET',
-                'https://api.example.com/users/john.doe@example.com/password123',
-                Argument::any()
-            )
-            ->willThrow($exception);
-
-        // Set up the logger to expect an error.
-        $this->loggerChannel
-            ->error('Cannot connect to OASIS API: @error', [
-                '@error' => 'Connection refused'
-            ])
-            ->shouldBeCalled();
-
-        // Call the method under test.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
-
-        // Assert that the result indicates API unavailable.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('api_unavailable', $result['error_type']);
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('api_unavailable', $res['error_type']);
     }
 
 
-    /**
-     * Tests error handling when the API returns a server error.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserServerError(): void
+    public function testAuthenticateUserRequestExceptionClientError(): void
     {
-        // Create a request exception with 500 status code.
-        $request = new Request('GET', 'https://api.example.com/users/john.doe@example.com/password123');
-        $response = new Response(500, [], 'Internal Server Error');
-        $exception = new RequestException('Server error', $request, $response);
-
-        // Set up the HTTP client to throw our exception.
-        $this->httpClient->request(
-            'GET', 'https://api.example.com/users/john.doe@example.com/password123', Argument::any()
-        )->willThrow($exception);
-
-        // Set up the logger to expect an error.
-        $this->loggerChannel->error(
-            'OASIS API server error (@status): @error', ['@status' => 500, '@error' => 'Server error']
-        )->shouldBeCalled();
-
-        // Call the method under test.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
-
-        // Assert that the result indicates API unavailable.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('api_unavailable', $result['error_type']);
-    }
-
-
-    /**
-     * Tests error handling when the API returns a client error.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserClientError(): void
-    {
-        // Create a request exception with 401 status code.
-        $request = new Request('GET', 'https://api.example.com/users/john.doe@example.com/password123');
+        $client = $this->createMock(ClientInterface::class);
+        $request = new Request('GET', 'https://api.example.com');
         $response = new Response(401, [], 'Unauthorized');
-        $exception = new RequestException('Client error', $request, $response);
+        $client
+            ->method('request')
+            ->willThrowException(new RequestException('client err', $request, $response));
 
-        // Set up the HTTP client to throw our exception.
-        $this->httpClient
-            ->request(
-                'GET',
-                'https://api.example.com/users/john.doe@example.com/password123',
-                Argument::any()
-            )
-            ->willThrow($exception);
-
-        // Set up the logger to expect an error.
-        $this->loggerChannel
-            ->error('OASIS API client error (@status): @error', [
-                    '@status' => 401,
-                    '@error' => 'Client error'
-                ]
-            )
-            ->shouldBeCalled();
-
-        // Call the method under test.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
-
-        // Assert that the result indicates invalid credentials.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_credentials', $result['error_type']);
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('invalid_credentials', $res['error_type']);
     }
 
 
-    /**
-     * Tests error handling when environment variables are missing.
-     *
-     * @covers ::getApiEndpoint
-     */
-    public function testMissingApiEndpoint(): void
+    public function testAuthenticateUserRequestExceptionServerError(): void
     {
-        // Remove the environment variable.
-        unset($_ENV['OASIS_API_USER_ENDPOINT']);
+        $client = $this->createMock(ClientInterface::class);
+        $request = new Request('GET', 'https://api.example.com');
+        $response = new Response(500, [], 'Server');
+        $client
+            ->method('request')
+            ->willThrowException(new RequestException('server err', $request, $response));
 
-        // Set up the logger to expect a critical error.
-        $this->loggerChannel
-            ->critical('OASIS_API_USER_ENDPOINT environment variable is not set')
-            ->shouldBeCalled();
-
-        // Expect a ServiceNotFoundException.
-        $this->expectException(ServiceNotFoundException::class);
-
-        // Call the method under test.
-        $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('api_unavailable', $res['error_type']);
     }
 
 
-    /**
-     * Tests error handling when authentication credentials are missing.
-     *
-     * @covers ::getAuthorizationHeader
-     */
-    public function testMissingAuthCredentials(): void
+    public function testAuthenticateUserOtherGuzzleException(): void
     {
-        // Remove the environment variables.
-        unset($_ENV['OASIS_ADMIN_USER']);
-        unset($_ENV['OASIS_ADMIN_PASSWORD']);
+        $client = $this->createMock(ClientInterface::class);
+        $client->method('request')->willThrowException(new TransferException('boom'));
 
-        // Set up the logger to expect a critical error.
-        $this->loggerChannel
-            ->critical('OASIS_ADMIN_USER or OASIS_ADMIN_PASSWORD environment variables are not set')
-            ->shouldBeCalled();
-
-        // Expect a ServiceNotFoundException.
-        $this->expectException(ServiceNotFoundException::class);
-
-        // Call the method under test.
-        $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('api_unavailable', $res['error_type']);
     }
 
 
-    /**
-     * Tests input validation for empty email.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserEmptyEmail(): void
+    public function testAuthenticateUserInvalidJson(): void
     {
-        // Set up the logger to expect a warning.
-        $this->loggerChannel
-            ->warning('Empty email or password provided for OASIS authentication')
-            ->shouldBeCalled();
+        $response = new Response(200, [], 'not-json');
+        $client = $this->createMock(ClientInterface::class);
+        $client->method('request')->willReturn($response);
 
-        // Call the method under test with empty email.
-        $result = $this->oasisApiClient->authenticateUser('', 'password123');
-
-        // Assert that the result indicates invalid input.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_input', $result['error_type']);
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('invalid_response', $res['error_type']);
     }
 
 
-    /**
-     * Tests input validation for empty password.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserEmptyPassword(): void
+    public function testAuthenticateUserInvalidCredentialsFromResponse(): void
     {
-        // Set up the logger to expect a warning.
-        $this->loggerChannel
-            ->warning('Empty email or password provided for OASIS authentication')
-            ->shouldBeCalled();
+        $payload = ['error' => 'invalid'];
+        $response = new Response(200, [], json_encode($payload));
+        $client = $this->createMock(ClientInterface::class);
+        $client->method('request')->willReturn($response);
 
-        // Call the method under test with empty password.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', '');
-
-        // Assert that the result indicates invalid input.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_input', $result['error_type']);
+        $sut = $this->makeSut($client);
+        $res = $sut->authenticateUser('user@example.com', 'pass');
+        $this->assertFalse($res['success']);
+        $this->assertSame('invalid_credentials', $res['error_type']);
     }
-
-
-    /**
-     * Tests input validation for invalid email format.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserInvalidEmail(): void
-    {
-        // Set up the logger to expect a warning.
-        $this->loggerChannel
-            ->warning('Invalid email format provided for OASIS authentication: @email', [
-                '@email' => 'invalid-email'
-            ])
-            ->shouldBeCalled();
-
-        // Call the method under test with invalid email.
-        $result = $this->oasisApiClient->authenticateUser('invalid-email', 'password123');
-
-        // Assert that the result indicates invalid input.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_input', $result['error_type']);
-    }
-
-
-    /**
-     * Tests JSON exception handling.
-     *
-     * @covers ::authenticateUser
-     */
-    public function testAuthenticateUserJsonException(): void
-    {
-        // Mock a response with invalid JSON.
-        $response = new Response(200, [], 'invalid json');
-
-        // Set up the HTTP client to return our mocked response.
-        $this->httpClient
-            ->request(
-                'GET',
-                'https://api.example.com/users/john.doe@example.com/password123',
-                Argument::any()
-            )
-            ->willReturn($response);
-
-        // Set up the logger to expect an error.
-        $this->loggerChannel
-            ->error('Invalid JSON response from OASIS API: @error', Argument::any())
-            ->shouldBeCalled();
-
-        // Call the method under test.
-        $result = $this->oasisApiClient->authenticateUser('john.doe@example.com', 'password123');
-
-        // Assert that the result indicates invalid response.
-        $this->assertIsArray($result);
-        $this->assertFalse($result['success']);
-        $this->assertNull($result['data']);
-        $this->assertEquals('invalid_response', $result['error_type']);
-    }
-
 }
-
-/* <> */

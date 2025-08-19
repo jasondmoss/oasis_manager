@@ -30,19 +30,28 @@ use Drupal\Core\Url;
  *
  * @return string
  */
-function oasis_manager_help(
-    string $route_name,
-    RouteMatchInterface $route_match
-): string {
+function oasis_manager_help(string $route_name, RouteMatchInterface $route_match): string
+{
+    $langcode = Drupal::languageManager()->getCurrentLanguage()->getId();
     $output = '';
 
     if ($route_name === 'help.page.oasis_manager') {
+        $description = match ($langcode) {
+            'fr' => <<< DESC
+Le module Oasis Manager assure l’intégration entre Drupal et le système OASIS/NAF à
+des fins d’authentification et d’autorisation des utilisateurs. Il permet aux
+utilisateurs de se connecter au site Drupal à l’aide de leurs identifiants OASIS et
+synchronise les rôles et les permissions des utilisateurs.
+DESC,
+            default => <<< DESC
+The Oasis Manager module provides integration between Drupal and the OASIS/NAF system
+for user authentication and authorization. It allows users to log in to the Drupal site
+using their OASIS credentials, synchronizes user roles and permissions.
+DESC,
+        };
+
         $output = '<h3>' . t('About') . '</h3>';
-        $output .= '<p>' . t('The Oasis Manager module provides integration between '
-            . 'Drupal and the OASIS/NAF system for user authentication and '
-            . 'authorization. It allows users to log in to the Drupal site using '
-            . 'their OASIS credentials, synchronizes user roles and permissions.')
-            . '</p>';
+        $output .= "<p>$description</p>";
     }
 
     return $output;
@@ -64,14 +73,13 @@ function oasis_manager_form_user_login_form_alter(
     $form['name']['#title'] = t('Email address or username');
     $form['name']['#description'] = t('Enter your email address or username.');
 
-    // Completely replace all core validation handlers to prevent
-    // "Login attempt failed" messages when OASIS authentication succeeds.
-    // The core handlers are ::validateAuthentication and ::validateFinal
+    /**
+     * Completely replace all core validation handlers to prevent "Login attempt failed"
+     * messages when OASIS authentication succeeds.
+     *
+     * The core handlers are ::validateAuthentication and ::validateFinal
+     */
     $form['#validate'] = ['oasis_manager_user_login_validate'];
-
-    // Add our submit handler at the beginning of the submit handlers array
-    // to ensure it's called before the core submit handler.
-//    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
 }
 
 
@@ -89,14 +97,13 @@ function oasis_manager_form_user_login_block_alter(
 ): void {
     $form['name']['#title'] = t('Email address or username');
 
-    // Completely replace all core validation handlers to prevent
-    // "Login attempt failed" messages when OASIS authentication succeeds.
-    // The core handlers are ::validateAuthentication and ::validateFinal
+    /**
+     * Completely replace all core validation handlers to prevent "Login attempt failed"
+     * messages when OASIS authentication succeeds.
+     *
+     * The core handlers are ::validateAuthentication and ::validateFinal
+     */
     $form['#validate'] = ['oasis_manager_user_login_validate'];
-
-    // Add our submit handler at the beginning of the submit handlers array
-    // to ensure it's called before the core submit handler.
-//    array_unshift($form['#submit'], 'oasis_manager_user_login_form_submit');
 }
 
 
@@ -108,10 +115,8 @@ function oasis_manager_form_user_login_block_alter(
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function oasis_manager_user_login_validate(
-    array &$form,
-    FormStateInterface $form_state
-): void {
+function oasis_manager_user_login_validate(array &$form, FormStateInterface $form_state): void
+{
     /** @var \Drupal\oasis_manager\Service\OasisAuthenticationService $auth_service */
     $auth_service = Drupal::service('oasis_manager.authentication');
     $auth_service->validateLogin($form, $form_state);
@@ -119,38 +124,51 @@ function oasis_manager_user_login_validate(
 
 
 /**
- * Custom submit handler for user login form.
+ * Implements hook_preprocess_menu().
  *
- * Redirects users based on their authentication type:
- * - OASIS members are redirected to node/478
- * - All other users are redirected to the front page
- *
- * @param array $form
- * @param \Drupal\Core\Form\FormStateInterface $form_state
+ * @param array $variables
  */
-/*function oasis_manager_user_login_form_submit(
-    array $form,
-    FormStateInterface $form_state
-): void {
-    // Determine the redirect URL based on authentication type.
-     $redirect_url = null;
-     if ($form_state->get('member')) {
-         // OASIS members are redirected to node/478.
-         $redirect_url = Url::fromRoute('entity.node.canonical', [
-             'node' => 478
-         ])->toString();
-     } else {
-         // All other users are redirected to the front page.
-         $redirect_url = Url::fromRoute('<front>')->toString();
-     }
+function oasis_manager_preprocess_menu(array &$variables): void
+{
+    // Only alter the "User account menu".
+    if (($variables['menu_name'] ?? '') !== 'account') {
+        return;
+    }
 
-     // Set the destination parameter to prevent the core submit handler from
-     // overriding our redirect.
-     if ($redirect_url) {
-         $request = Drupal::request();
-         $request->request->set('destination', $redirect_url);
-         $request->query->set('destination', $redirect_url);
-     }
-}*/
+    $current_user = Drupal::currentUser();
+    if ($current_user->isAnonymous()) {
+        return;
+    }
+
+    $roles = $current_user->getRoles();
+    $is_oasis_member = in_array('regular_member', $roles, true)
+        || in_array('associate_member', $roles, true);
+
+    if (! $is_oasis_member) {
+        return;
+    }
+
+    if (! isset($variables['items']) || ! is_array($variables['items'])) {
+        return;
+    }
+
+    foreach ($variables['items'] as &$item) {
+        if (! isset($item['url'])) {
+            continue;
+        }
+
+        $url = $item['url'];
+        if ($url instanceof Url && $url->isRouted()
+            && $url->getRouteName() === 'user.page'
+        ) {
+            // Rename the link and point it to our redirect route.
+            $item['title'] = t('Member Profile');
+            $item['url'] = Url::fromRoute('oasis_manager.member_profile_redirect');
+
+            // Ensure caching varies by user roles so only members see the change.
+            $item['cache']['contexts'][] = 'user.roles';
+        }
+    }
+}
 
 /* <> */

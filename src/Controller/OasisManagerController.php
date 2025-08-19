@@ -16,148 +16,104 @@ namespace Drupal\oasis_manager\Controller;
  * @package DRUPAL11
  */
 
-use Drupal\Core\Access\AccessResult;
+use Drupal;
 use Drupal\Core\Controller\ControllerBase;
-use Drupal\Core\Session\AccountInterface;
-use Drupal\user\UserAuthInterface;
+use Drupal\Core\Url;
+use Drupal\Core\Routing\TrustedRedirectResponse;
+use Drupal\user\Entity\User;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 
 class OasisManagerController extends ControllerBase
 {
 
     /**
-     * The user authentication service.
-     *
-     * @var \Drupal\user\UserAuthInterface
-     */
-    protected UserAuthInterface $userAuth;
-
-
-    /**
-     * Constructs a new OasisManagerController object.
-     *
-     * @param \Drupal\user\UserAuthInterface $user_auth
-     *   The user authentication service.
-     */
-    public function __construct(UserAuthInterface $user_auth)
-    {
-        $this->userAuth = $user_auth;
-    }
-
-
-    /**
      * {@inheritdoc}
      */
     public static function create(ContainerInterface $container): static
     {
-        return new static(
-            $container->get('user.auth')
-        );
+        // No dependencies required for this controller.
+        return new static();
     }
 
 
     /**
-     * Logs out the current user.
+     * Logs out the current user by redirecting to Drupal core's logout route.
+     * This ensures CSRF validation and full session invalidation handled by core.
      *
      * @param \Symfony\Component\HttpFoundation\Request $request
-     *   The current request.
+     *
+     * @return \Symfony\Component\HttpFoundation\RedirectResponse
      */
-    public function logout(Request $request): void
+    public function logout(Request $request): RedirectResponse
     {
-        // Log out the user (this will clear the session)
-        $this->userAuth->logout();
+        /**
+         * Redirect to the core logout route. Drupal will automatically append the
+         * CSRF token for routes that require it and will fully invalidate the session
+         * during logout.
+         */
+        return $this->redirect('user.logout');
     }
 
 
     /**
-     * Displays the regular member area.
+     * Redirects Oasis members to the external Member Profile page.
      *
-     * @return array
-     *   A render array for the regular member area.
+     * @param \Symfony\Component\HttpFoundation\Request $request
+     *
+     * @return \Symfony\Component\HttpFoundation\RedirectResponse
      */
-    public function regularMemberArea(): array
+    public function memberProfileRedirect(Request $request): RedirectResponse
     {
-        return [
-            '#markup' => $this->t('Regular Member Area'),
-            '#cache' => [
-                'contexts' => ['user.roles'],
-                'tags' => ['user:' . $this->currentUser()->id()]
-            ]
-        ];
-    }
+        $current_user = Drupal::currentUser();
+        if ($current_user->isAnonymous()) {
+            return $this->redirect('user.page');
+        }
 
-
-    /**
-     * Displays the associate member area.
-     *
-     * @return array
-     *   A render array for the associate member area.
-     */
-    public function associateMemberArea(): array
-    {
-        return [
-            '#markup' => $this->t('Associate Member Area'),
-            '#cache' => [
-                'contexts' => ['user.roles'],
-                'tags' => ['user:' . $this->currentUser()->id()]
-            ]
-        ];
-    }
-
-
-    /**
-     * Access callback for the regular member area.
-     *
-     * @param \Drupal\Core\Session\AccountInterface $account
-     *   The user account.
-     *
-     * @return \Drupal\Core\Access\AccessResult
-     *   The access result.
-     */
-    public static function userIsRegularMember(AccountInterface $account): AccessResult
-    {
-        return AccessResult::allowedIf(
-            in_array('regular_member', $account->getRoles(), true)
-            || $account->hasPermission('administer users')
-        )->addCacheContexts(['user.roles']);
-    }
-
-
-    /**
-     * Access callback for the associate member area.
-     *
-     * @param \Drupal\Core\Session\AccountInterface $account
-     *   The user account.
-     *
-     * @return \Drupal\Core\Access\AccessResult
-     *   The access result.
-     */
-    public static function userIsAssociateMember(
-        AccountInterface $account
-    ): AccessResult {
-        return AccessResult::allowedIf(
-            in_array('associate_member', $account->getRoles(), true)
-            || $account->hasPermission('administer users')
-        )->addCacheContexts(['user.roles']);
-    }
-
-
-    /**
-     * Checks if a user has a member role.
-     *
-     * @param \Drupal\Core\Session\AccountInterface $account
-     *   The user account.
-     *
-     * @return bool
-     *   TRUE if the user has a member role, FALSE otherwise.
-     */
-    protected function userHasMemberRole(AccountInterface $account): bool
-    {
-        $roles = $account->getRoles();
-
-        return in_array('regular_member', $roles, true)
+        // Check roles to ensure this only applies to Oasis members.
+        $roles = $current_user->getRoles();
+        $is_oasis_member = in_array('regular_member', $roles, true)
             || in_array('associate_member', $roles, true);
+        if (! $is_oasis_member) {
+            return $this->redirect('user.page');
+        }
+
+        // Determine base URL from environment based on language.
+        $langcode = Drupal::languageManager()->getCurrentLanguage()->getId();
+        $env_key = ($langcode === 'fr')
+            ? 'OASIS_MEMBER_PROFILE_URL_FR'
+            : 'OASIS_MEMBER_PROFILE_URL_EN';
+        $base_url = $_ENV[$env_key] ?? getenv($env_key) ?: '';
+
+        // Get token from session and email from the user entity.
+        $token = null;
+        if ($request->hasSession() && ($session = $request->getSession())) {
+            $token = $session->get('OasisAPIToken');
+        }
+
+        $email = '';
+        $uid = (int) $current_user->id();
+        if ($uid) {
+            $account = User::load($uid);
+            if ($account) {
+                $email = $account->getEmail();
+            }
+        }
+
+        // If we have everything needed, redirect externally; otherwise fallback.
+        if (! empty($base_url) && ! empty($token) && ! empty($email)) {
+            $external = Url::fromUri($base_url, [
+                'query' => [
+                    'email' => $email,
+                    'token' => $token
+                ]
+            ])->toString();
+
+            return new TrustedRedirectResponse($external, 302);
+        }
+
+        return $this->redirect('user.page');
     }
 
 }

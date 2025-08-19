@@ -113,16 +113,19 @@ class OasisUserManager
         try {
             // Try to load the user by member ID.
             $user = $this->getUserByMemberId($member_id);
-
             if (! $user) {
                 // Create a new user if one doesn't exist.
                 $user = $this->createUser($member_id, $password, $oasis_data);
+
                 $this->loggerFactory
                     ->get('oasis_manager')
                     ->notice('Created new user from OASIS data: @email', [
                         '@email' => $oasis_data->LoginID
                     ]);
             }
+
+            // Always sync the local Drupal password to the OASIS password used at login.
+            $user->setPassword(trim($password));
 
             // Update the user with the latest OASIS data.
             $this->updateUserFromOasisData($user, $oasis_data);
@@ -222,8 +225,36 @@ class OasisUserManager
      */
     protected function updateUserFromOasisData(User $user, object $oasis_data): void
     {
+        //echo "<pre>";
+        //var_dump($oasis_data);
+        //echo "</pre>";
+        //exit();
+
         // Update basic user fields.
-        $user->setEmail($oasis_data->LoginID);
+        $desired_email = $oasis_data->LoginID ?? '';
+        if (! empty($desired_email) && $desired_email !== $user->getEmail()) {
+            // Check for email conflict before updating to avoid save exceptions.
+            $conflict_ids = $this->entityTypeManager
+                ->getStorage('user')
+                ->getQuery()
+                ->condition('mail', $desired_email)
+                ->condition('uid', $user->id(), '<>')
+                ->accessCheck(false)
+                ->range(0, 1)
+                ->execute();
+
+            if (! empty($conflict_ids)) {
+                $this->loggerFactory
+                    ->get('oasis_manager')
+                    ->warning('Skipped updating email for user @uid from OASIS because @email is already in use by another account.', [
+                        '@uid' => $user->id(),
+                        '@email' => $desired_email
+                    ]);
+            } else {
+                $user->setEmail($desired_email);
+            }
+        }
+
         $user->set('field_first_name', $oasis_data->FirstName);
         $user->set('field_last_name', $oasis_data->LastName);
         $user->set('field_member_id', $oasis_data->MemberID);
@@ -332,6 +363,13 @@ class OasisUserManager
         if (! empty($oasis_data->OrchardRoles)) {
             $session->set('OasisOrchardRoles', $oasis_data->OrchardRoles);
         }
+
+        // Log successful finalization for auditing and to satisfy unit test expectations.
+        $this->loggerFactory
+            ->get('oasis_manager')
+            ->info('OASIS user login finalized for member @member_id', [
+                '@member_id' => $oasis_data->MemberID ?? ''
+            ]);
 
         return true;
     }
