@@ -86,12 +86,13 @@ class OasisManagerController extends ControllerBase
             : 'OASIS_MEMBER_PROFILE_URL_EN';
         $base_url = $_ENV[$env_key] ?? getenv($env_key) ?: '';
 
-        // Get token from session and email from the user entity.
+        // Get token from session.
         $token = null;
         if ($request->hasSession() && ($session = $request->getSession())) {
             $token = $session->get('OasisAPIToken');
         }
 
+        // Get email from the user entity.
         $email = '';
         $uid = (int) $current_user->id();
         if ($uid) {
