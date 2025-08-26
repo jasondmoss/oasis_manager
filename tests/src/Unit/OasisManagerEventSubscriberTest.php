@@ -16,6 +16,10 @@ use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Drupal;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Logger\LoggerChannelInterface;
 
 /**
  * @covers \Drupal\oasis_manager\EventSubscriber\OasisManagerEventSubscriber
@@ -23,6 +27,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
  */
 class OasisManagerEventSubscriberTest extends TestCase
 {
+
     private function makeSubscriber(
         ?AccountProxyInterface $currentUser = null,
         ?MessengerInterface $messenger = null,
@@ -36,11 +41,13 @@ class OasisManagerEventSubscriberTest extends TestCase
         return new OasisManagerEventSubscriber($auth, $currentUser, $messenger, $stack);
     }
 
+
     private function makeEvent(Request $request): RequestEvent
     {
         $kernel = $this->createMock(HttpKernelInterface::class);
         return new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST);
     }
+
 
     public function testSubscribedEvents(): void
     {
@@ -49,6 +56,7 @@ class OasisManagerEventSubscriberTest extends TestCase
             OasisManagerEventSubscriber::getSubscribedEvents()
         );
     }
+
 
     public function testAnonymousUserIsIgnored(): void
     {
@@ -62,6 +70,7 @@ class OasisManagerEventSubscriberTest extends TestCase
         $request->setSession(new Session(new MockArraySessionStorage()));
         $subscriber->checkOasisSession($this->makeEvent($request));
     }
+
 
     public function testNonOasisUserIsIgnored(): void
     {
@@ -79,6 +88,7 @@ class OasisManagerEventSubscriberTest extends TestCase
         $subscriber->checkOasisSession($this->makeEvent($request));
     }
 
+
     public function testOasisUserWithInvalidTokenGetsWarning(): void
     {
         $currentUser = $this->createMock(AccountProxyInterface::class);
@@ -94,9 +104,18 @@ class OasisManagerEventSubscriberTest extends TestCase
         $request->setSession($session);
         $stack->push($request);
 
+        // Initialize minimal Drupal container with a logger factory.
+        $container = new ContainerBuilder();
+        $loggerFactory = $this->createMock(LoggerChannelFactoryInterface::class);
+        $logger = $this->createMock(LoggerChannelInterface::class);
+        $loggerFactory->method('get')->willReturn($logger);
+        $container->set('logger.factory', $loggerFactory);
+        Drupal::setContainer($container);
+
         $subscriber = $this->makeSubscriber($currentUser, $messenger, $stack);
         $subscriber->checkOasisSession($this->makeEvent($request));
     }
+
 
     public function testOasisUserWithValidTokenNoWarning(): void
     {
@@ -116,4 +135,5 @@ class OasisManagerEventSubscriberTest extends TestCase
         $subscriber = $this->makeSubscriber($currentUser, $messenger, $stack);
         $subscriber->checkOasisSession($this->makeEvent($request));
     }
+
 }

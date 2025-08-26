@@ -42,6 +42,12 @@ class TestableAuthService extends OasisAuthenticationService
         return parent::authenticateWithOasis($fs, $email, $pass);
     }
 
+
+    public function callUserHasMemberRole(User $user): bool
+    {
+        return parent::userHasMemberRole($user);
+    }
+
 }
 
 
@@ -97,10 +103,32 @@ class OasisAuthenticationServiceTest extends TestCase
         $formState
             ->expects($this->exactly(3))
             ->method('set')
-            ->withConsecutive(['uid', 42], ['user', $user], ['member', true]);
+            ->willReturnCallback(function ($key, $value) use ($user) {
+                static $i = 0;
+                if ($i === 0) {
+                    $this->assertSame('uid', $key);
+                    $this->assertSame(42, $value);
+                } elseif ($i === 1) {
+                    $this->assertSame('user', $key);
+                    $this->assertSame($user, $value);
+                } elseif ($i === 2) {
+                    $this->assertSame('member', $key);
+                    $this->assertTrue($value);
+                } else {
+                    $this->fail('Unexpected extra call to FormStateInterface::set');
+                }
+                $i++;
+            });
 
-        $service = new TestableAuthService($api, $userManager, $loggerFactory, $messenger, $userAuth);
-        $ok = $service->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
+        $service = new TestableAuthService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+        $ok = $service
+            ->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
         $this->assertTrue($ok);
     }
 
@@ -118,8 +146,15 @@ class OasisAuthenticationServiceTest extends TestCase
         $messenger->expects($this->once())->method('addError');
         $formState = $this->createMock(FormStateInterface::class);
 
-        $service = new TestableAuthService($api, $userManager, $loggerFactory, $messenger, $userAuth);
-        $ok = $service->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
+        $service = new TestableAuthService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+        $ok = $service
+            ->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
         $this->assertFalse($ok);
     }
 
@@ -137,8 +172,15 @@ class OasisAuthenticationServiceTest extends TestCase
         $messenger->expects($this->never())->method('addError');
         $formState = $this->createMock(FormStateInterface::class);
 
-        $service = new TestableAuthService($api, $userManager, $loggerFactory, $messenger, $userAuth);
-        $ok = $service->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
+        $service = new TestableAuthService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+        $ok = $service
+            ->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
         $this->assertFalse($ok);
     }
 
@@ -156,8 +198,15 @@ class OasisAuthenticationServiceTest extends TestCase
         $messenger->expects($this->once())->method('addError');
         $formState = $this->createMock(FormStateInterface::class);
 
-        $service = new TestableAuthService($api, $userManager, $loggerFactory, $messenger, $userAuth);
-        $ok = $service->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
+        $service = new TestableAuthService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+        $ok = $service
+            ->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
         $this->assertFalse($ok);
     }
 
@@ -171,9 +220,40 @@ class OasisAuthenticationServiceTest extends TestCase
         $messenger->expects($this->once())->method('addError');
         $formState = $this->createMock(FormStateInterface::class);
 
-        $service = new TestableAuthService($api, $userManager, $loggerFactory, $messenger, $userAuth);
-        $ok = $service->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
+        $service = new TestableAuthService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+        $ok = $service
+            ->callAuthenticateWithOasis($formState, 'user@example.com', 'secret');
         $this->assertFalse($ok);
+    }
+
+
+    public function testUserHasMemberRoleDetectsRegularOrAssociate(): void
+    {
+        [$api, $userManager, $loggerFactory, $messenger, $userAuth] = $this->makeDeps();
+        $service = new OasisAuthenticationService(
+            $api,
+            $userManager,
+            $loggerFactory,
+            $messenger,
+            $userAuth
+        );
+
+        $user = $this->createMock(User::class);
+        $user->method('hasRole')->willReturnCallback(function (string $rid): bool {
+            return in_array($rid, ['regular_member'], true);
+        });
+
+        $this->assertTrue($service->userHasMemberRole($user));
+
+        $user2 = $this->createMock(User::class);
+        $user2->method('hasRole')->willReturn(false);
+        $this->assertFalse($service->userHasMemberRole($user2));
     }
 
 }

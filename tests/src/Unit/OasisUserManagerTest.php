@@ -23,6 +23,7 @@ use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
  */
 class OasisUserManagerTest extends TestCase
 {
+
     private function makeSut(
         ?AccountProxyInterface $currentUser = null,
         ?RequestStack $requestStack = null
@@ -38,19 +39,19 @@ class OasisUserManagerTest extends TestCase
         $requestStack = $requestStack ?? new RequestStack();
 
         return new OasisUserManager(
-            $entityTypeManager,
-            $apiClient,
-            $currentUser,
-            $loggerFactory,
-            $requestStack
+            $entityTypeManager, $apiClient, $currentUser, $loggerFactory, $requestStack
         );
     }
+
 
     public function testFinalizeLoginReturnsFalseWhenAdminSessionPresent(): void
     {
         $currentUser = $this->createMock(AccountProxyInterface::class);
         $currentUser->method('isAuthenticated')->willReturn(true);
-        $currentUser->method('hasPermission')->with('administer users')->willReturn(true);
+        $currentUser
+            ->method('hasPermission')
+            ->with('administer users')
+            ->willReturn(true);
 
         $sut = $this->makeSut($currentUser);
         $user = $this->createMock(User::class);
@@ -58,6 +59,7 @@ class OasisUserManagerTest extends TestCase
 
         $this->assertFalse($sut->finalizeLogin($user, $oasis));
     }
+
 
     public function testFinalizeLoginFailsWithoutRequestOrSession(): void
     {
@@ -75,6 +77,7 @@ class OasisUserManagerTest extends TestCase
         $requestStack->push(new Request());
         $this->assertFalse($sut->finalizeLogin($user, $oasis));
     }
+
 
     public function testFinalizeLoginSetsSessionValuesAndReturnsTrue(): void
     {
@@ -103,4 +106,5 @@ class OasisUserManagerTest extends TestCase
         $this->assertSame('Regular Members', $session->get('OasisRegCategory'));
         $this->assertSame('Executive Committee', $session->get('OasisOrchardRoles'));
     }
+
 }

@@ -347,13 +347,15 @@ class OasisUserManager
             return false;
         }
 
-        if (! ($session = $request->getSession())) {
+        if (! $request->hasSession()) {
             $this->loggerFactory
                 ->get('oasis_manager')
                 ->error('No session available for OASIS data storage');
 
             return false;
         }
+
+        $session = $request->getSession();
 
         // Set session variables using proper session handling.
         $session->set('member', $oasis_data->MemberID ?? '');

@@ -13,28 +13,30 @@ use Symfony\Component\HttpFoundation\Request;
  * @covers \Drupal\oasis_manager\Controller\OasisManagerController
  * @group oasis_manager
  */
-class DummyUserAuth implements UserAuthInterface
-{
-    public bool $logoutCalled = false;
-
-    public function authenticate($name, $password)
-    {
-        return false;
-    }
-
-    public function logout(): void
-    {
-        $this->logoutCalled = true;
-    }
-}
+use Drupal;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Drupal\Core\Routing\UrlGeneratorInterface;
 
 class OasisManagerControllerTest extends TestCase
 {
-    public function testLogoutCallsUserAuthLogout(): void
+
+    public function testLogoutRedirectsToUserLogout(): void
     {
-        $auth = new DummyUserAuth();
-        $controller = new OasisManagerController($auth);
-        $controller->logout(new Request());
-        $this->assertTrue($auth->logoutCalled);
+        // Prepare a minimal Drupal container with a URL generator.
+        $container = new ContainerBuilder();
+        $urlGenerator = $this->createMock(UrlGeneratorInterface::class);
+        $urlGenerator->method('generate')->willReturn('/user/logout');
+        $urlGenerator->method('generateFromRoute')->willReturn('/user/logout');
+        $container->set('url_generator', $urlGenerator);
+        $container->set('request_stack', new RequestStack());
+        Drupal::setContainer($container);
+
+        $controller = new OasisManagerController();
+        $response = $controller->logout(new Request());
+
+        $this->assertSame('/user/logout', $response->getTargetUrl());
+        $this->assertSame(302, $response->getStatusCode());
     }
+
 }

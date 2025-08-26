@@ -40,7 +40,7 @@ class OasisManagerController extends ControllerBase
 
     /**
      * Logs out the current user by redirecting to Drupal core's logout route.
-     * This ensures CSRF validation and full session invalidation handled by core.
+     * This ensures CSRF validation and full session invalidation is handled by core.
      *
      * @param \Symfony\Component\HttpFoundation\Request $request
      *
@@ -79,12 +79,15 @@ class OasisManagerController extends ControllerBase
             return $this->redirect('user.page');
         }
 
-        // Determine base URL from environment based on language.
+        // Oasis token login base URI.
+        $oasis_login_url = getenv('OASIS_TOKEN_LOGIN_URL');
+
+        // Determine member URL from environment based on language.
         $langcode = Drupal::languageManager()->getCurrentLanguage()->getId();
         $env_key = ($langcode === 'fr')
             ? 'OASIS_MEMBER_PROFILE_URL_FR'
             : 'OASIS_MEMBER_PROFILE_URL_EN';
-        $base_url = $_ENV[$env_key] ?? getenv($env_key) ?: '';
+        $member_uri = $_ENV[$env_key] ?? getenv($env_key) ?: '';
 
         // Get token from session.
         $token = null;
@@ -103,13 +106,17 @@ class OasisManagerController extends ControllerBase
         }
 
         // If we have everything needed, redirect externally; otherwise fallback.
-        if (! empty($base_url) && ! empty($token) && ! empty($email)) {
-            $external = Url::fromUri($base_url, [
-                'query' => [
-                    'email' => $email,
-                    'token' => $token
-                ]
-            ])->toString();
+        if (! empty($oasis_login_url)
+            && ! empty($member_uri)
+            && ! empty($token)
+            && ! empty($email)
+        ) {
+            $external = Url::fromUri(
+                $oasis_login_url . '/'
+                . $email . '/'
+                . $token . '/'
+                . $member_uri
+            )->toString();
 
             return new TrustedRedirectResponse($external, 302);
         }
